@@ -102,6 +102,38 @@ impl Child {
 }
 
 impl ChildPTY {
+    pub fn new() -> Result<ChildPTY> {
+        let pty_master = try!(open_ptm());
+        Ok(ChildPTY { fd: pty_master, })
+    }
+
+    pub fn attach_pts(&self, stdin: bool, stdout: bool, stderr: bool) -> Result<()> {
+        let pts_name = unsafe { ffi::ptsname(self.fd) };
+
+        if (pts_name as *const i32) == std::ptr::null() {
+            return Err(last_error());
+        }
+
+        unsafe_try!(libc::close(self.fd));
+        unsafe_try!(libc::setsid());
+
+        let pty_slave = unsafe_try!(libc::open(pts_name, libc::O_RDWR, 0));
+
+        if stdin {
+            unsafe_try!(libc::dup2(pty_slave, libc::STDIN_FILENO));
+        }
+        if stdout {
+            unsafe_try!(libc::dup2(pty_slave, libc::STDOUT_FILENO));
+        }
+        if stderr {
+            unsafe_try!(libc::dup2(pty_slave, libc::STDERR_FILENO));
+        }
+
+        unsafe_try!(libc::close(pty_slave));
+
+        Ok(())
+    }
+
     /// Closes own file descriptor.
     pub fn close(&self) -> Result<()> {
         if unsafe { libc::close(self.as_raw_fd()) } < 0 {
