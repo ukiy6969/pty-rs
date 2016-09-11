@@ -12,7 +12,8 @@ use nix::errno;
 use nix::sys::wait;
 use std::fmt;
 use std::io::{self, Read, Write};
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::process::Stdio;
+use std::os::unix::io::{AsRawFd, RawFd, FromRawFd};
 use std::result;
 
 mod ffi;
@@ -132,6 +133,21 @@ impl ChildPTY {
         unsafe_try!(libc::close(pty_slave));
 
         Ok(())
+    }
+
+    pub fn get_stdio(&self) -> Result<Stdio> {
+        let pts_name = unsafe { ffi::ptsname(self.fd) };
+
+        if (pts_name as *const i32) == std::ptr::null() {
+            return Err(last_error());
+        }
+
+        let pty_slave = unsafe_try!(libc::open(pts_name, libc::O_RDWR, 0));
+        let stdio = unsafe {
+            Stdio::from_raw_fd(pty_slave)
+        };
+
+        Ok(stdio)
     }
 
     /// Closes own file descriptor.
